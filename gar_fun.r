@@ -108,13 +108,6 @@ gar.fun<-function(out.var,mod.in,bar.plot=T,struct=NULL,x.lab=NULL,
   # weights only if T
   if(wts.only) return(best.wts)
   
-  # get column index value for response variable to measure
-  if('numeric' %in% class(mod.in)){
-    out.ind <-  as.numeric(gsub('^[A-Z]','',out.var))
-    } else {
-      out.ind<-which(out.var==colnames(eval(mod.in$call$y)))
-      }
-  
   #get variable names from mod.in object
   #change to user input if supplied
   if('numeric' %in% class(mod.in)){
@@ -149,48 +142,64 @@ gar.fun<-function(out.var,mod.in,bar.plot=T,struct=NULL,x.lab=NULL,
       else y.names<-as.character(forms)[2]
     } 
   }
+  
+  # get index value for response variable to measure
+  if('numeric' %in% class(mod.in)){
+    out.ind <-  as.numeric(gsub('^[A-Z]','',out.var))
+  } else {
+    out.ind<- grep(out.var, y.names)
+  }
+  
   #change variables names to user sub 
   if(!is.null(x.lab)){
     if(length(x.names) != length(x.lab)) stop('x.lab length not equal to number of input variables')
     else x.names<-x.lab
   }
   if(!is.null(y.lab)){
-    if(length(y.names) != length(y.lab)) stop('y.lab length not equal to number of output variables')
-    else y.names<-y.lab
+    y.names<-y.lab
+  } else {
+    y.names <- y.names[grep(out.var, y.names)]
   }
+
+  # organize hidden layer weights for matrix mult
+  inp.hid <- best.wts[grep('hidden', names(best.wts))]
+  split_vals <- substr(names(inp.hid), 1, 8)
+  inp.hid <- split(inp.hid, split_vals)
+  inp.hid <- lapply(inp.hid, function(x) t(do.call('rbind', x))[-1, ])
   
-  #get input-hidden weights and hidden-output weights, remove bias
-  inp.hid<-data.frame(
-    do.call('cbind',best.wts[grep('hidden',names(best.wts))])[-1,],
-    row.names=x.names#c(colnames(eval(mod.in$call$x)))
-  )
+  # final layer weights for output
   hid.out<-best.wts[[grep(paste('out',out.ind),names(best.wts))]][-1]
+
+  # matrix multiplication of output layer with connecting hidden layer
+  max_i <- length(inp.hid)
+  sum_in <- as.matrix(inp.hid[[max_i]]) %*% matrix(hid.out)
   
-  #multiply hidden-output connection for each input-hidden weight
-  mult.dat<-data.frame(
-    sapply(1:ncol(inp.hid),function(x) inp.hid[,x]*hid.out[x]),
-    row.names=rownames(inp.hid)
-  )    
-  names(mult.dat)<-colnames(inp.hid)
+  # recursive matrix multiplication for all remaining hidden layers
+  # only for multiple hidden layers
+  if(max_i != 1){ 
+    
+    for(i in (max_i - 1):1) sum_in <- as.matrix(inp.hid[[i]]) %*% sum_in
+    
+    # final contribution vector for all inputs
+    inp.cont <- sum_in    
   
-  #get relative contribution of each input variable to each hidden node, sum values for each input
-  #inp.cont<-rowSums(apply(mult.dat,2,function(x) abs(x)/sum(abs(x))))
-  inp.cont<-rowSums(mult.dat)
+  } else {
+    
+    inp.cont <- sum_in
+  
+  }
   
   #get relative contribution
   #inp.cont/sum(inp.cont)
-  
   rel.imp<-{
     signs<-sign(inp.cont)
     signs*rescale(abs(inp.cont),c(0,1))
   }
   
   if(!bar.plot){
-    return(list(
-      mult.wts=mult.dat,
-      inp.cont=inp.cont,
-      rel.imp=rel.imp
-    ))
+    out <- data.frame(rel.imp)
+    row.names(out) <- x.names
+    return(out)
   }
   
   to_plo <- data.frame(rel.imp,x.names)[order(rel.imp),,drop = F]

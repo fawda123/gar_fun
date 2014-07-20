@@ -1,8 +1,3 @@
----
-title: "README"
-author: "Marcus W Beck"
-date: "Wednesday, July 16, 2014"
-output: html_document
----
+Garson's algorithm 
 
-Garson's alg readme, currently incomplete
+See 'ex_data.r' for examples, also see gist <a href=https://gist.github.com/fawda123/6206737>6206737</a>
